@@ -1,6 +1,4 @@
-def main():
-    print("Hello from diffweek!")
-
+from diffweek.cli import main
 
 if __name__ == "__main__":
     main()
