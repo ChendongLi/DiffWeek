@@ -63,6 +63,10 @@ def resolve_repo_path(repo_arg: str) -> str:
             print(f"gh cli failed or not found, trying git clone {url}...")
             subprocess.run(["git", "clone", url, str(local_repo_path)], check=True)
 
+        # Fetch all remote branches so git log --all can find them
+        print("Fetching all remote branches...")
+        _run_git(str(local_repo_path), ["fetch", "--all"])
+
         return str(local_repo_path)
 
     raise FileNotFoundError(
@@ -76,36 +80,67 @@ def extract_git_changes(
     """
     Extract commit-level and file-level change data for a given time window.
     Returns: (commits_df, files_df)
+
+    Uses a single git log --numstat command to get both commit metadata and
+    file stats in one pass, avoiding the N+1 query pattern.
     """
-    # Get commit list within window
+    # Get commits with numstat in a single command
+    # Format: commit info line, then numstat lines, separated by blank lines
     fmt = "%H%x1f%an%x1f%ae%x1f%ad%x1f%s"
     log_out = _run_git(
         repo_path,
         [
             "log",
+            "--all",
             f"--since={window.since}",
             f"--until={window.until}",
             f"--pretty=format:{fmt}",
             "--date=iso-strict",
+            "--numstat",
         ],
     ).strip()
 
     commits = []
+    file_rows = []
+    current_commit = None
+
     if log_out:
         for line in log_out.splitlines():
-            parts = line.split("\x1f")
-            if len(parts) != 5:
+            if not line:
                 continue
-            commit_hash, author_name, author_email, author_date, subject = parts
-            commits.append(
-                {
-                    "commit": commit_hash,
-                    "author_name": author_name,
-                    "author_email": author_email,
-                    "author_date": author_date,
-                    "subject": subject,
-                }
-            )
+
+            # Check if this is a commit line (contains our delimiter)
+            if "\x1f" in line:
+                parts = line.split("\x1f")
+                if len(parts) == 5:
+                    commit_hash, author_name, author_email, author_date, subject = parts
+                    current_commit = commit_hash
+                    commits.append(
+                        {
+                            "commit": commit_hash,
+                            "author_name": author_name,
+                            "author_email": author_email,
+                            "author_date": author_date,
+                            "subject": subject,
+                        }
+                    )
+            elif current_commit:
+                # This is a numstat line for the current commit
+                # numstat format: "<add>\t<del>\t<path>"
+                # For binary files: "-\t-\t<path>"
+                cols = line.split("\t")
+                if len(cols) >= 3:
+                    add_s, del_s, path = cols[0], cols[1], "\t".join(cols[2:])
+                    is_binary = add_s == "-" or del_s == "-"
+                    file_rows.append(
+                        {
+                            "commit": current_commit,
+                            "path": path,
+                            "additions": None if is_binary else int(add_s),
+                            "deletions": None if is_binary else int(del_s),
+                            "is_binary": is_binary,
+                        }
+                    )
 
     commits_df = pd.DataFrame(commits)
     if commits_df.empty:
@@ -114,37 +149,6 @@ def extract_git_changes(
             columns=["commit", "path", "additions", "deletions", "is_binary"]
         )
         return commits_df, files_df
-
-    # For each commit, gather numstat (file-level additions/deletions)
-    file_rows = []
-    for commit_hash in commits_df["commit"].tolist():
-        show_out = _run_git(
-            repo_path, ["show", "--numstat", "--format=", commit_hash]
-        ).strip()
-        if not show_out:
-            continue
-
-        for line in show_out.splitlines():
-            # numstat format: "<add>\t<del>\t<path>"
-            # For binary files: "-\t-\t<path>"
-            cols = line.split("\t")
-            if len(cols) < 3:
-                continue
-            add_s, del_s, path = cols[0], cols[1], "\t".join(cols[2:])
-
-            is_binary = add_s == "-" or del_s == "-"
-            additions = None if is_binary else int(add_s)
-            deletions = None if is_binary else int(del_s)
-
-            file_rows.append(
-                {
-                    "commit": commit_hash,
-                    "path": path,
-                    "additions": additions,
-                    "deletions": deletions,
-                    "is_binary": is_binary,
-                }
-            )
 
     files_df = pd.DataFrame(file_rows)
 

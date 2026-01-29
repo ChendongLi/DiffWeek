@@ -33,7 +33,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token_here
 
 ## Usage (Phase 1A)
 
-Generate a weekly engineering summary report:
+Generate a weekly engineering summary report (will save to report folder by default)
 
 ```bash
 # Using relative time (7 days, 2 weeks, 1 month)
@@ -45,8 +45,11 @@ diffweek report --repo owner/repo --contributor username --start 2026-01-20 --en
 # Using a local repository
 diffweek report --repo ./path/to/repo --contributor username --since 7d
 
-# Save output to a file
-diffweek report --repo owner/repo --contributor username --since 7d --output report.md
+# Output is saved to report/{contributor}_{date}.md by default
+diffweek report --repo owner/repo --contributor username --since 7d
+
+# Save output to a custom file
+diffweek report --repo owner/repo --contributor username --since 7d --output custom-report.md
 ```
 
 ### Options
@@ -58,7 +61,7 @@ diffweek report --repo owner/repo --contributor username --since 7d --output rep
 | `--since` | `-s` | Relative time period: `7d`, `2w`, `1m` |
 | `--start` | | Start date (ISO format: YYYY-MM-DD) |
 | `--end` | | End date (ISO format: YYYY-MM-DD) |
-| `--output` | `-o` | Output file path (default: stdout) |
+| `--output` | `-o` | Output file path (default: `report/{contributor}_{date}.md`) |
 
 ### Example Output
 
@@ -99,6 +102,7 @@ DiffWeek/
 │   ├── github_client.py   # GitHub API client
 │   ├── models.py          # Data models
 │   └── report.py          # Markdown report generator
+├── report/                # Generated reports (default output)
 ├── main.py                # Entry point
 ├── pyproject.toml         # Dependencies and config
 └── .env                   # Environment variables

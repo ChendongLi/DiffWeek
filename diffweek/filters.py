@@ -1,6 +1,6 @@
 """Filtering and aggregation utilities for commit data."""
 
-from typing import List, Set, Tuple
+from typing import List, Tuple
 
 import pandas as pd
 
@@ -9,15 +9,15 @@ from .models import CommitSummary
 
 
 def filter_by_contributor(
-    commits_df: pd.DataFrame, files_df: pd.DataFrame, emails: List[str]
+    commits_df: pd.DataFrame, files_df: pd.DataFrame, contributor: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Filter commits and files to only those by the specified contributor.
 
     Args:
-        commits_df: DataFrame with commit data (must have 'author_email' column)
+        commits_df: DataFrame with commit data (must have 'author_name' and 'author_email' columns)
         files_df: DataFrame with file change data (must have 'commit' column)
-        emails: List of email addresses belonging to the contributor
+        contributor: GitHub username to match (matches in author_name or author_email)
 
     Returns:
         Tuple of (filtered_commits_df, filtered_files_df)
@@ -25,12 +25,12 @@ def filter_by_contributor(
     if commits_df.empty:
         return commits_df, files_df
 
-    emails_set: Set[str] = {e.lower() for e in emails}
-
-    # Filter commits by email (case-insensitive)
-    filtered_commits = commits_df[
-        commits_df["author_email"].str.lower().isin(emails_set)
-    ].copy()
+    contributor_lower = contributor.lower()
+    mask = (
+        commits_df["author_name"].str.lower().str.contains(contributor_lower, na=False)
+        | commits_df["author_email"].str.lower().str.contains(contributor_lower, na=False)
+    )
+    filtered_commits = commits_df[mask].copy()
 
     if filtered_commits.empty:
         return filtered_commits, pd.DataFrame(columns=files_df.columns)

@@ -10,7 +10,7 @@ import typer
 
 from .filters import aggregate_commits, filter_by_contributor, filter_large_diffs
 from .git_extract import extract_git_changes, resolve_repo_path
-from .github_client import get_merged_prs, get_user_emails
+from .github_client import get_merged_prs
 from .models import ReportData, TimeWindow
 from .report import generate_markdown_report
 
@@ -161,18 +161,14 @@ def report_cmd(
         resolved_path = Path(repo_path).resolve()
         repo_display = resolved_path.name or str(resolved_path)
 
-    # Get contributor emails
-    typer.echo(f"Resolving contributor emails for: {contributor}")
-    emails = get_user_emails(contributor)
-    typer.echo(f"  Found emails: {', '.join(emails)}")
-
     # Extract git changes
     typer.echo("Extracting git history...")
     commits_df, files_df = extract_git_changes(repo_path, window)
     typer.echo(f"  Total commits in window: {len(commits_df)}")
 
     # Filter by contributor
-    filtered_commits, filtered_files = filter_by_contributor(commits_df, files_df, emails)
+    typer.echo(f"Filtering by contributor: {contributor}")
+    filtered_commits, filtered_files = filter_by_contributor(commits_df, files_df, contributor)
     typer.echo(f"  Commits by contributor: {len(filtered_commits)}")
 
     # Mark large diffs
@@ -214,11 +210,17 @@ def report_cmd(
 
     # Output
     if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(markdown)
         typer.echo(f"Report written to: {output}")
     else:
-        typer.echo("")
-        typer.echo(markdown)
+        # Default output to report/ directory
+        report_dir = Path("report")
+        report_dir.mkdir(parents=True, exist_ok=True)
+        default_filename = f"{contributor}_{period_end}.md"
+        default_output = report_dir / default_filename
+        default_output.write_text(markdown)
+        typer.echo(f"Report written to: {default_output}")
 
 
 def main() -> None:
